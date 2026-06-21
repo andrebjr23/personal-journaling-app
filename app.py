@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import sqlite3
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import os
 from google import genai
 from google.genai import types
@@ -59,9 +59,53 @@ def get_entries(entry_types):
     conn.close()
     return rows, col_names
 
+def get_streak():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT created_at FROM entries")
+    rows = c.fetchall()
+    conn.close()
+
+    entry_dates = set()
+    for (created_at,) in rows:
+        entry_dates.add(created_at.split(" ")[0])
+
+    today = date.today()
+    check_date = today
+    if check_date.isoformat() not in entry_dates:
+        check_date = today - timedelta(days=1)
+
+    streak = 0
+    while check_date.isoformat() in entry_dates:
+        streak += 1
+        check_date -= timedelta(days=1)
+
+    return streak
+
 init_db()
 
 st.title("Journal")
+
+streak = get_streak()
+if streak > 0:
+    fire = "🔥" * min(streak, 5)
+    st.markdown(
+        f"""
+        <div style="text-align:center; padding:14px; background:#A47551; border-radius:10px; margin-bottom:15px;">
+            <span style="font-size:26px; font-weight:bold; color:#FFF7EC;">{fire} {streak} Day Streak {fire}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        """
+        <div style="text-align:center; padding:14px; background:#E8D9C5; border-radius:10px; margin-bottom:15px;">
+            <span style="font-size:20px; color:#3B2F2F;">Start your streak today!</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 marquee_html = """
 <div style="overflow:hidden; white-space:nowrap; background:#E8D9C5; padding:10px 0; border-radius:8px; margin-bottom:20px; width:100%;">

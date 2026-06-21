@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import sqlite3
 from datetime import datetime
 
@@ -53,7 +54,25 @@ init_db()
 
 st.title("Journal")
 
-tab1, tab2 = st.tabs(["New Entry", "Browse Entries"])
+marquee_html = """
+<div style="overflow:hidden; white-space:nowrap; background:#E8D9C5; padding:10px 0; border-radius:8px; margin-bottom:20px; width:100%;">
+  <div style="display:inline-block; font-family: Georgia, serif; font-size:18px; color:#3B2F2F; animation: scrollLR 45s linear infinite;">
+    Ideas don't need to be finished to be worth writing down &nbsp;&nbsp;•&nbsp;&nbsp;
+    Every reflection is a takeaway in progress &nbsp;&nbsp;•&nbsp;&nbsp;
+    Your own takeaway matters more than anyone else's opinion &nbsp;&nbsp;•&nbsp;&nbsp;
+    Small daily notes build a bigger picture &nbsp;&nbsp;•&nbsp;&nbsp;
+  </div>
+</div>
+<style>
+@keyframes scrollLR {
+  from { transform: translateX(100%); }
+  to { transform: translateX(-100%); }
+}
+</style>
+"""
+st.markdown(marquee_html, unsafe_allow_html=True)
+
+tab1, tab2, tab3 = st.tabs(["New Entry", "Browse Entries", "Focus Timer"])
 
 with tab1:
     entry_type = st.selectbox("Entry type", ["IQR", "START", "Daily Note", "Long-form"])
@@ -114,3 +133,86 @@ with tab2:
             elif entry["entry_type"] == "Longform":
                 st.write(entry["longform_content"])
             st.divider()
+
+with tab3:
+    st.write("Set a focus timer for your journaling session, with an optional ambient tone.")
+    timer_html = """
+    <div style="text-align:center; font-family: sans-serif; padding:20px;">
+      <div id="display" style="font-size:56px; color:#3B2F2F; font-weight:bold;">20:00</div>
+      <div style="margin:15px 0;">
+        <button onclick="setDuration(20)" style="margin:5px; padding:8px 16px;">20 min</button>
+        <button onclick="setDuration(30)" style="margin:5px; padding:8px 16px;">30 min</button>
+      </div>
+      <div style="margin:15px 0;">
+        <button onclick="startTimer()" style="margin:5px; padding:8px 16px;">Start</button>
+        <button onclick="stopTimer()" style="margin:5px; padding:8px 16px;">Reset</button>
+      </div>
+      <label style="font-size:14px;">
+        <input type="checkbox" id="toneToggle" onchange="toggleTone()"> Ambient tone
+      </label>
+    </div>
+    <script>
+    let totalSeconds = 20*60;
+    let remaining = totalSeconds;
+    let timerInterval = null;
+    let audioCtx, oscillator1, oscillator2, gainNode;
+    function setDuration(mins) {
+      totalSeconds = mins*60;
+      remaining = totalSeconds;
+      updateDisplay();
+    }
+    function updateDisplay() {
+      let m = Math.floor(remaining/60);
+      let s = remaining%60;
+      document.getElementById('display').innerText =
+        String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    }
+    function startTimer() {
+      if (timerInterval) return;
+      timerInterval = setInterval(() => {
+        if (remaining > 0) {
+          remaining--;
+          updateDisplay();
+        } else {
+          clearInterval(timerInterval);
+          timerInterval = null;
+          stopTone();
+          document.getElementById('display').innerText = "Done!";
+        }
+      }, 1000);
+    }
+    function stopTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      remaining = totalSeconds;
+      updateDisplay();
+    }
+    function toggleTone() {
+      const checked = document.getElementById('toneToggle').checked;
+      if (checked) startTone(); else stopTone();
+    }
+    function startTone() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      oscillator1 = audioCtx.createOscillator();
+      oscillator2 = audioCtx.createOscillator();
+      gainNode = audioCtx.createGain();
+      oscillator1.type = 'sine';
+      oscillator2.type = 'sine';
+      oscillator1.frequency.value = 220;
+      oscillator2.frequency.value = 224;
+      gainNode.gain.value = 0.04;
+      oscillator1.connect(gainNode);
+      oscillator2.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator1.start();
+      oscillator2.start();
+    }
+    function stopTone() {
+      if (oscillator1) { oscillator1.stop(); oscillator1 = null; }
+      if (oscillator2) { oscillator2.stop(); oscillator2 = null; }
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+    }
+    updateDisplay();
+    </script>
+    """
+    components.html(timer_html, height=300) 

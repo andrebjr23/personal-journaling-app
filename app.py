@@ -2,8 +2,17 @@ import streamlit as st
 import streamlit.components.v1 as components
 import sqlite3
 from datetime import datetime
+import os
+from google import genai
+from google.genai import types
 
 DB_PATH = "journal.db"
+
+def get_api_key(key_name):
+    try:
+        return st.secrets[key_name]
+    except Exception:
+        return os.environ.get(key_name)
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -40,11 +49,11 @@ def save_entry(entry_type, fields):
     conn.commit()
     conn.close()
 
-def get_entries(types):
+def get_entries(entry_types):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    placeholders = ",".join(["?"] * len(types))
-    c.execute(f"SELECT * FROM entries WHERE entry_type IN ({placeholders}) ORDER BY created_at DESC", types)
+    placeholders = ",".join(["?"] * len(entry_types))
+    c.execute(f"SELECT * FROM entries WHERE entry_type IN ({placeholders}) ORDER BY created_at DESC", entry_types)
     rows = c.fetchall()
     col_names = [desc[0] for desc in c.description]
     conn.close()
@@ -72,7 +81,7 @@ marquee_html = """
 """
 st.markdown(marquee_html, unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["New Entry", "Browse Entries", "Focus Timer"])
+tab1, tab2, tab3, tab4 = st.tabs(["New Entry", "Browse Entries", "Focus Timer", "AI Helper"])
 
 with tab1:
     entry_type = st.selectbox("Entry type", ["IQR", "START", "Daily Note", "Long-form"])
@@ -109,8 +118,8 @@ with tab1:
 
 with tab2:
     bucket = st.radio("View", ["IQR / START", "Daily Notes / Long-form"])
-    types = ["IQR", "START"] if bucket == "IQR / START" else ["Daily", "Longform"]
-    rows, col_names = get_entries(types)
+    entry_types = ["IQR", "START"] if bucket == "IQR / START" else ["Daily", "Longform"]
+    rows, col_names = get_entries(entry_types)
 
     if not rows:
         st.write("No entries yet.")
@@ -215,4 +224,46 @@ with tab3:
     updateDisplay();
     </script>
     """
-    components.html(timer_html, height=300) 
+    components.html(timer_html, height=300)
+
+with tab4:
+    st.write("Stuck on what to write? Talk it through here.")
+
+    if "gemini_client" not in st.session_state:
+        st.session_state.gemini_client = genai.Client(api_key=get_api_key("GEMINI_API_KEY"))
+
+    if "chat" not in st.session_state:
+        st.session_state.chat = st.session_state.gemini_client.chats.create(
+            model="gemini-2.5-flash",
+            config=types.GenerateContentConfig(
+                system_instruction=(
+                    "You are a supportive journaling assistant. Help the user think "
+                    "through their IQR (Ideas, Questions, Reflection) or START "
+                    "(Situation, Task, Action, Result, Takeaway) entries by asking "
+                    "thoughtful follow-up questions, not by giving them answers or "
+                    "writing the entry for them. You are not a therapist and do not "
+                    "give clinical or medical advice. If the user seems to be in real "
+                    "distress, gently encourage them to talk to a real person or "
+                    "professional rather than relying on this chat."
+                )
+            ),
+        )
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    for role, text in st.session_state.chat_history:
+        with st.chat_message(role):
+            st.write(text)
+
+    user_input = st.chat_input("Ask the journaling helper...")
+    if user_input:
+        st.session_state.chat_history.append(("user", user_input))
+        with st.chat_message("user"):
+            st.write(user_input)
+
+        response = st.session_state.chat.send_message(user_input)
+
+        st.session_state.chat_history.append(("assistant", response.text))
+        with st.chat_message("assistant"):
+            st.write(response.text) 
